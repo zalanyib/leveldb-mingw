@@ -51,8 +51,7 @@ class CorruptionTest {
   }
 
   Status TryReopen(Options* options = NULL) {
-    delete db_;
-    db_ = NULL;
+    Close();
     Options opt = (options ? *options : options_);
     opt.env = &env_;
     opt.block_cache = tiny_cache_;
@@ -63,9 +62,13 @@ class CorruptionTest {
     ASSERT_OK(TryReopen(options));
   }
 
-  void RepairDB() {
+  void Close() {
     delete db_;
     db_ = NULL;
+  }
+
+  void RepairDB() {
+    Close();
     ASSERT_OK(::leveldb::RepairDB(dbname_, options_));
   }
 
@@ -194,6 +197,7 @@ class CorruptionTest {
 TEST(CorruptionTest, Recovery) {
   Build(100);
   Check(100, 100);
+  Close();
   Corrupt(kLogFile, 19, 1);      // WriteBatch tag for first record
   Corrupt(kLogFile, log::kBlockSize + 1000, 1);  // Somewhere in second block
   Reopen();
@@ -297,8 +301,9 @@ TEST(CorruptionTest, CompactionInputError) {
   dbi->TEST_CompactMemTable();
   const int last = config::kMaxMemCompactLevel;
   ASSERT_EQ(1, Property("leveldb.num-files-at-level" + NumberToString(last)));
-
+  Close();
   Corrupt(kTableFile, 100, 1);
+  Reopen();
   Check(9, 9);
 
   // Force compactions by writing lots of values
@@ -323,14 +328,15 @@ TEST(CorruptionTest, CompactionInputErrorParanoid) {
   Build(10);
   dbi->TEST_CompactMemTable();
   ASSERT_EQ(1, Property("leveldb.num-files-at-level0"));
-
+  Close();
   Corrupt(kTableFile, 100, 1);
+  Reopen();
   Check(9, 9);
 
   // Write must eventually fail because of corrupted table
   Status s;
   std::string tmp1, tmp2;
-  for (int i = 0; i < 10000 && s.ok(); i++) {
+  for (int i = 0; i < 50000 && s.ok(); i++) {
     s = db_->Put(WriteOptions(), Key(i, &tmp1), Value(i, &tmp2));
   }
   ASSERT_TRUE(!s.ok()) << "write did not fail in corrupted paranoid db";
