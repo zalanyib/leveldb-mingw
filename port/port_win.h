@@ -31,15 +31,18 @@
 #ifndef STORAGE_LEVELDB_PORT_PORT_WIN_H_
 #define STORAGE_LEVELDB_PORT_PORT_WIN_H_
 
-#ifdef _MSC_VER
 #define snprintf _snprintf
-#define close _close
-#define fread_unlocked _fread_nolock
+
+#include <windows.h>
+// Undo various #define in windows headers that interfere with the code
+#ifdef min
+#undef min
 #endif
-
-
-#ifdef SNAPPY
-#include <snappy/snappy.h>
+#ifdef small
+#undef small
+#endif
+#ifdef DeleteFile
+#undef DeleteFile
 #endif
 
 #include <string>
@@ -52,51 +55,123 @@ namespace port {
 // Windows is little endian (for now :p)
 static const bool kLittleEndian = true;
 
-class CondVar;
-
+// based on lock_impl_win.cc from chrome:
+// http://src.chromium.org/viewvc/chrome/trunk/src/base/synchronization/lock_impl_win.cc?revision=70363&view=markup
 class Mutex {
  public:
-  Mutex();
-  ~Mutex();
+  Mutex() {
+      // The second parameter is the spin count, for short-held locks it avoid the
+      // contending thread from going to sleep which helps performance greatly.
+      ::InitializeCriticalSectionAndSpinCount(&os_lock_, 2000);
+  }
 
-  void Lock();
-  void Unlock();
-  void AssertHeld();
+  ~Mutex(){
+    ::DeleteCriticalSection(&os_lock_);
+  }
 
- private:
-  friend class CondVar;
-  // critical sections are more efficient than mutexes
-  // but they are not recursive and can only be used to synchronize threads within the same process
-  // additionnaly they cannot be used with SignalObjectAndWait that we use for CondVar
-  // we use opaque void * to avoid including windows.h in port_win.h
-  void * mutex_;
+  void Lock() {
+    ::EnterCriticalSection(&os_lock_);
+  }
+
+  void Unlock() {
+     ::LeaveCriticalSection(&os_lock_);
+  }
+
+  void AssertHeld() { }
+
+private:
+  CRITICAL_SECTION os_lock_;
 
   // No copying
   Mutex(const Mutex&);
   void operator=(const Mutex&);
 };
 
-// the Win32 API offers a dependable condition variable mechanism,
-// but only starting with Windows 2008 and Vista
-// no matter what we will implement our own condition variable with a semaphore
-// implementation as described in a paper written by Douglas C. Schmidt and Irfan Pyarali
+// based on condition_variable_win.cc from chrome:
+// http://src.chromium.org/viewvc/chrome/trunk/src/base/synchronization/condition_variable_win.cc?revision=70363&view=markup
 class CondVar {
  public:
-  explicit CondVar(Mutex* mu);
+  explicit CondVar(Mutex* user_lock);
   ~CondVar();
-  void Wait();
+
+  void Wait() {
+      // Default to "wait forever" timing, which means have to get a Signal()
+      // or SignalAll() to come out of this wait state.
+      TimedWait(INFINITE);
+  }
+
+  void TimedWait(const int64_t max_time_in_ms);
   void Signal();
   void SignalAll();
  private:
-  Mutex* mu_;
-  
-  Mutex wait_mtx_;
-  long waiting_;
-  
-  void * sema_;
-  void * event_;
-
-  bool broadcasted_;  
+   // Define Event class that is used to form circularly linked lists.
+   // The list container is an element with NULL as its handle_ value.
+   // The actual list elements have a non-zero handle_ value.
+   // All calls to methods MUST be done under protection of a lock so that links
+   // can be validated.  Without the lock, some links might asynchronously
+   // change, and the assertions would fail (as would list change operations).
+   class Event {
+    public:
+     // Default constructor with no arguments creates a list container.
+     Event();
+     ~Event();
+   
+     // InitListElement transitions an instance from a container, to an element.
+     void InitListElement();
+   
+     // Methods for use on lists.
+     bool IsEmpty() const;
+     void PushBack(Event* other);
+     Event* PopFront();
+     Event* PopBack();
+   
+     // Methods for use on list elements.
+     // Accessor method.
+     HANDLE handle() const;
+     // Pull an element from a list (if it's in one).
+     Event* Extract();
+   
+     // Method for use on a list element or on a list.
+     bool IsSingleton() const;
+   
+    private:
+     // Provide pre/post conditions to validate correct manipulations.
+     bool ValidateAsDistinct(Event* other) const;
+     bool ValidateAsItem() const;
+     bool ValidateAsList() const;
+     bool ValidateLinks() const;
+   
+     HANDLE handle_;
+     Event* next_;
+     Event* prev_;
+     //DISALLOW_COPY_AND_ASSIGN(Event);
+   };
+   
+   // Note that RUNNING is an unlikely number to have in RAM by accident.
+   // This helps with defensive destructor coding in the face of user error.
+   enum RunState { SHUTDOWN = 0, RUNNING = 64213 };
+   
+   // Internal implementation methods supporting Wait().
+   Event* GetEventForWaiting();
+   void RecycleEvent(Event* used_event);
+   
+   RunState run_state_;
+   
+   // Private critical section for access to member data.
+   Mutex internal_lock_;
+   
+   // Lock that is acquired before calling Wait().
+   Mutex& user_lock_;
+   
+   // Events that threads are blocked on.
+   Event waiting_list_;
+   
+   // Free list for old events.
+   Event recycling_list_;
+   int recycling_list_size_;
+   
+   // The number of allocated, but not yet deleted events.
+   int allocation_counter_;
 };
 
 // Storage for a lock-free pointer
@@ -105,19 +180,30 @@ class AtomicPointer {
   void * rep_;
  public:
   AtomicPointer() : rep_(nullptr) { }
-  explicit AtomicPointer(void* v); 
-  void* Acquire_Load() const;
+  explicit AtomicPointer(void* v) {
+      Release_Store(v);
+  }
+  void* Acquire_Load() const {
+    void * p = nullptr;
+    InterlockedExchangePointer(&p, rep_);
+    return p;
+  }
 
-  void Release_Store(void* v);
+  void Release_Store(void* v) {
+    InterlockedExchangePointer(&rep_, v);
+  }
 
-  void* NoBarrier_Load() const;
+  void* NoBarrier_Load() const {
+    return rep_;
+  }
 
-  void NoBarrier_Store(void* v);
+  void NoBarrier_Store(void* v) {
+    rep_ = v;
+  }
 };
 
 typedef volatile long OnceType;
 #define LEVELDB_ONCE_INIT (0)
-
 extern void InitOnce(OnceType* once, void (*initializer)());
 
 inline bool Snappy_Compress(const char* input, size_t length,
