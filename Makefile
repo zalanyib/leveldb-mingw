@@ -6,8 +6,8 @@
 # Uncomment exactly one of the lines labelled (A), (B), and (C) below
 # to switch between compilation modes.
 
-OPT ?= -O2 -DNDEBUG       # (A) Production use (optimized mode)
-# OPT ?= -g2              # (B) Debug mode, w/ full line-level debugging symbols
+# OPT ?= -O2 -DNDEBUG       # (A) Production use (optimized mode)
+OPT ?= -g2              # (B) Debug mode, w/ full line-level debugging symbols
 # OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 #-----------------------------------------------
 
@@ -91,7 +91,7 @@ check: all $(PROGRAMS) $(TESTS)
 	for t in $(TESTS); do echo "***** Running $$t"; ./$$t || exit 1; done
 
 clean:
-	-rm -f $(PROGRAMS) $(BENCHMARKS) $(LIBRARY) $(SHARED) $(MEMENVLIBRARY) */*.o */*/*.o ios-x86/*/*.o ios-arm/*/*.o build_config.mk
+	-rm -f $(PROGRAMS) $(BENCHMARKS) $(LIBRARY) $(SHARED) $(MEMENVLIBRARY) */*.o */*/*.o ios-x86/*/*.o ios-arm/*/*.o build_config.mk *.exe
 	-rm -rf ios-x86/* ios-arm/*
 
 $(LIBRARY): $(LIBOBJECTS)
