@@ -19,7 +19,7 @@ static std::string MakeFileName(const std::string& name, uint64_t number,
                                 const char* suffix) {
   char buf[100];
 #ifdef OS_WINDOWS
-  snprintf(buf, sizeof(buf), "/%06I64d.%s",
+  snprintf(buf, sizeof(buf), "/%06I64u.%s",
            number, suffix);
 #else
   snprintf(buf, sizeof(buf), "/%06llu.%s",

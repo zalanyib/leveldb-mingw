@@ -22,9 +22,14 @@ void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {
 
 std::string ParsedInternalKey::DebugString() const {
   char buf[50];
+#ifdef OS_WINDOWS
+  snprintf(buf, sizeof(buf), "' @ %I64u : %d",
+           sequence, int(type));
+#else
   snprintf(buf, sizeof(buf), "' @ %llu : %d",
            (unsigned long long) sequence,
            int(type));
+#endif
   std::string result = "'";
   result += user_key.ToString();
   result += buf;
