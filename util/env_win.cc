@@ -568,7 +568,7 @@ class WinEnv : public Env {
   virtual uint64_t NowMicros() {
     LARGE_INTEGER count;
     QueryPerformanceCounter(&count);
-    return count.QuadPart * 1000000i64 / freq_.QuadPart;
+    return count.QuadPart * 1000000LL / freq_.QuadPart;
   }
 
   virtual void SleepForMicroseconds(int micros) {
