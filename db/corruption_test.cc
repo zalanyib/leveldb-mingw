@@ -330,7 +330,7 @@ TEST(CorruptionTest, CompactionInputErrorParanoid) {
   ASSERT_EQ(1, Property("leveldb.num-files-at-level0"));
   Close();
   Corrupt(kTableFile, 100, 1);
-  Reopen();
+  Reopen(&options);
   Check(9, 9);
 
   // Write must eventually fail because of corrupted table
