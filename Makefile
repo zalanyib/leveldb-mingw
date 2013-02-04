@@ -58,6 +58,13 @@ MEMENVLIBRARY = libmemenv.a
 DLLLIBRARY = leveldb.dll
 IMPLIBRARY = leveldb.lib
 
+DEST ?= /usr/local
+
+install: $(LIBRARY)
+	mkdir -p $(DEST)/include/leveldb
+	cp -a ./include/leveldb/*.h $(DEST)/include/leveldb
+	cp -aH libleveldb.* $(DEST)/lib
+
 default: all
 
 # Should we build shared libraries?
