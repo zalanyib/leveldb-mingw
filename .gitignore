@@ -4,6 +4,8 @@ build_config.mk
 *.dylib*
 *.so
 *.so.*
+*.dll
+*.lib
 *_test
 db_bench
 *.exe
