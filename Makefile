@@ -55,6 +55,8 @@ BENCHMARKS = db_bench_sqlite3 db_bench_tree_db
 
 LIBRARY = libleveldb.a
 MEMENVLIBRARY = libmemenv.a
+DLLLIBRARY = leveldb.dll
+IMPLIBRARY = leveldb.lib
 
 default: all
 
@@ -85,7 +87,11 @@ $(SHARED3):
 
 endif  # PLATFORM_SHARED_EXT
 
-all: $(SHARED) $(LIBRARY)
+all: $(SHARED) $(LIBRARY) $(DLLLIBRARY)
+
+$(DLLLIBRARY):
+#
+	$(CXX) -shared -Wl,--enable-runtime-pseudo-reloc -Wl,-no-undefined $(LDFLAGS) $(CXXFLAGS) $(PLATFORM_SHARED_CFLAGS) $(SOURCES) -o $(DLLLIBRARY) $(LIBS) -Wl,--out-implib,$(IMPLIBRARY)
 
 check: all $(PROGRAMS) $(TESTS)
 	for t in $(TESTS); do echo "***** Running $$t"; ./$$t || exit 1; done
