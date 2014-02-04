@@ -31,7 +31,7 @@ std::string ParsedInternalKey::DebugString() const {
            int(type));
 #endif
   std::string result = "'";
-  result += user_key.ToString();
+  result += EscapeString(user_key.ToString());
   result += buf;
   return result;
 }
