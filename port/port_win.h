@@ -31,7 +31,9 @@
 #ifndef STORAGE_LEVELDB_PORT_PORT_WIN_H_
 #define STORAGE_LEVELDB_PORT_PORT_WIN_H_
 
+#ifndef __MINGW32__
 #define snprintf _snprintf
+#endif
 
 #include <windows.h>
 // Undo various #define in windows headers that interfere with the code

@@ -143,9 +143,11 @@ case "$TARGET_OS" in
         ;;
     MINGW*)
         PLATFORM=OS_WINDOWS
-	CROSS_COMPILE=true
+        CROSS_COMPILE=true
         COMMON_FLAGS="$MEMCMP_FLAG -D_REENTRANT -DOS_WINDOWS -DLEVELDB_PLATFORM_WINDOWS -DBOOST_THREAD_USE_LIB"
-	PLATFORM_CXXFLAGS="-std=gnu++0x -D_WIN32_WINNT=0x0501"
+        PLATFORM_CXXFLAGS="-std=gnu++0x -D_WIN32_WINNT=0x0501"
+        # removed -fPIC on mingw as it is already the default setting
+        PLATFORM_SHARED_CFLAGS=
         PORT_FILE="port/port_win.cc"
         # man ld: +h internal_name
         # PLATFORM_SHARED_LDFLAGS="-shared "
