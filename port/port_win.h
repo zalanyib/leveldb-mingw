@@ -51,6 +51,10 @@
 
 #include <stdint.h>
 
+#ifdef SNAPPY
+#include <snappy.h>
+#endif
+
 namespace leveldb {
 namespace port {
 

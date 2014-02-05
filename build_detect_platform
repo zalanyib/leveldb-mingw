@@ -145,7 +145,7 @@ case "$TARGET_OS" in
         PLATFORM=OS_WINDOWS
         CROSS_COMPILE=true
         COMMON_FLAGS="$MEMCMP_FLAG -D_REENTRANT -DOS_WINDOWS -DLEVELDB_PLATFORM_WINDOWS -DBOOST_THREAD_USE_LIB"
-        PLATFORM_CXXFLAGS="-std=gnu++0x -D_WIN32_WINNT=0x0501"
+        PLATFORM_CXXFLAGS="-std=gnu++0x -D_WIN32_WINNT=0x0501 -I/mingw/include"
         # removed -fPIC on mingw as it is already the default setting
         PLATFORM_SHARED_CFLAGS=
         PORT_FILE="port/port_win.cc"
@@ -176,12 +176,28 @@ set +f # re-enable globbing
 echo "SOURCES=$PORTABLE_FILES $PORT_FILE" >> $OUTPUT
 echo "MEMENV_SOURCES=helpers/memenv/memenv.cc" >> $OUTPUT
 
+
+CXXOUTPUT="${TMPDIR}/leveldb_build_detect_platform-cxx.$$"
+
+# Moved here to enable spanny support on MinGW as well
+if [ "$CROSS_COMPILE" = "false" ] || [ "$PLATFORM" = "OS_WINDOWS" ]; then
+    # Test whether Snappy library is installed
+    # http://code.google.com/p/snappy/
+    $CXX $CXXFLAGS $PLATFORM_CXXFLAGS -x c++ -s - -o $CXXOUTPUT 2>/dev/null  <<EOF
+    #include <snappy.h>
+    int main() {}
+EOF
+    if [ "$?" = 0 ]; then
+        COMMON_FLAGS="$COMMON_FLAGS -DSNAPPY"
+        PLATFORM_LIBS="$PLATFORM_LIBS -lsnappy"
+    fi
+fi
+
+
 if [ "$CROSS_COMPILE" = "true" ]; then
     # Cross-compiling; do not try any compilation tests.
     true
 else
-    CXXOUTPUT="${TMPDIR}/leveldb_build_detect_platform-cxx.$$"
-    
     # If -std=c++0x works, use <cstdatomic>.  Otherwise use port_posix.h.
     $CXX $CXXFLAGS -std=c++0x -x c++ - -o $CXXOUTPUT 2>/dev/null  <<EOF
       #include <cstdatomic>
@@ -192,17 +208,6 @@ EOF
         PLATFORM_CXXFLAGS="-std=c++0x"
     else
         COMMON_FLAGS="$COMMON_FLAGS -DLEVELDB_PLATFORM_POSIX"
-    fi
-
-    # Test whether Snappy library is installed
-    # http://code.google.com/p/snappy/
-    $CXX $CXXFLAGS -x c++ - -o $CXXOUTPUT 2>/dev/null  <<EOF
-      #include <snappy.h>
-      int main() {}
-EOF
-    if [ "$?" = 0 ]; then
-        COMMON_FLAGS="$COMMON_FLAGS -DSNAPPY"
-        PLATFORM_LIBS="$PLATFORM_LIBS -lsnappy"
     fi
 
     # Test whether tcmalloc is available
