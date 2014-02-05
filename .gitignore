@@ -8,4 +8,5 @@ build_config.mk
 *.lib
 *_test
 db_bench
+leveldbutil
 *.exe

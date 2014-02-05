@@ -41,8 +41,6 @@ class DBImpl : public DB {
   virtual bool GetProperty(const Slice& property, std::string* value);
   virtual void GetApproximateSizes(const Range* range, int n, uint64_t* sizes);
   virtual void CompactRange(const Slice* begin, const Slice* end);
-  virtual void SuspendCompactions();
-  virtual void ResumeCompactions();
 
   // Extra methods (for testing) that are not in the public DB interface
 
@@ -61,13 +59,19 @@ class DBImpl : public DB {
   // file at a level >= 1.
   int64_t TEST_MaxNextLevelOverlappingBytes();
 
+  // Record a sample of bytes read at the specified internal key.
+  // Samples are taken approximately once every config::kReadBytesPeriod
+  // bytes.
+  void RecordReadSample(Slice key);
+
  private:
   friend class DB;
   struct CompactionState;
   struct Writer;
 
   Iterator* NewInternalIterator(const ReadOptions&,
-                                SequenceNumber* latest_snapshot);
+                                SequenceNumber* latest_snapshot,
+                                uint32_t* seed);
 
   Status NewDB();
 
@@ -127,13 +131,6 @@ class DBImpl : public DB {
   // Lock over the persistent DB state.  Non-NULL iff successfully acquired.
   FileLock* db_lock_;
 
-  port::Mutex suspend_mutex;
-  port::CondVar suspend_cv;
-  int suspend_count;
-  bool suspended;
-  static void SuspendWork(void* db);
-  void SuspendCallback();
-
   // State below is protected by mutex_
   port::Mutex mutex_;
   port::AtomicPointer shutting_down_;
@@ -144,6 +141,7 @@ class DBImpl : public DB {
   WritableFile* logfile_;
   uint64_t logfile_number_;
   log::Writer* log_;
+  uint32_t seed_;                // For sampling.
 
   // Queue of writers.
   std::deque<Writer*> writers_;

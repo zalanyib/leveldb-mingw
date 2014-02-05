@@ -95,8 +95,8 @@ Options SanitizeOptions(const std::string& dbname,
   result.comparator = icmp;
   result.filter_policy = (src.filter_policy != NULL) ? ipolicy : NULL;
   ClipToRange(&result.max_open_files,    64 + kNumNonTableCacheFiles, 50000);
-  ClipToRange(&result.write_buffer_size,         64<<10, 1<<30);
-  ClipToRange(&result.block_size,                1<<10,  4<<20);
+  ClipToRange(&result.write_buffer_size, 64<<10,                      1<<30);
+  ClipToRange(&result.block_size,        1<<10,                       4<<20);
   if (result.info_log == NULL) {
     // Open a log file in the same directory as the db
     src.env->CreateDir(dbname);  // In case it does not exist
@@ -113,26 +113,24 @@ Options SanitizeOptions(const std::string& dbname,
   return result;
 }
 
-DBImpl::DBImpl(const Options& options, const std::string& dbname)
-    : env_(options.env),
-      internal_comparator_(options.comparator),
-      internal_filter_policy_(options.filter_policy),
-      options_(SanitizeOptions(
-          dbname, &internal_comparator_, &internal_filter_policy_, options)),
-      owns_info_log_(options_.info_log != options.info_log),
-      owns_cache_(options_.block_cache != options.block_cache),
+DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
+    : env_(raw_options.env),
+      internal_comparator_(raw_options.comparator),
+      internal_filter_policy_(raw_options.filter_policy),
+      options_(SanitizeOptions(dbname, &internal_comparator_,
+                               &internal_filter_policy_, raw_options)),
+      owns_info_log_(options_.info_log != raw_options.info_log),
+      owns_cache_(options_.block_cache != raw_options.block_cache),
       dbname_(dbname),
       db_lock_(NULL),
       shutting_down_(NULL),
-      suspend_cv(&suspend_mutex),
-      suspend_count(0),
-      suspended(false),
       bg_cv_(&mutex_),
       mem_(new MemTable(internal_comparator_)),
       imm_(NULL),
       logfile_(NULL),
       logfile_number_(0),
       log_(NULL),
+      seed_(0),
       tmp_batch_(new WriteBatch),
       bg_compaction_scheduled_(false),
       manual_compaction_(NULL),
@@ -141,7 +139,7 @@ DBImpl::DBImpl(const Options& options, const std::string& dbname)
   has_imm_.Release_Store(NULL);
 
   // Reserve ten files or so for other uses and give the rest to TableCache.
-  const int table_cache_size = options.max_open_files - kNumNonTableCacheFiles;
+  const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles;
   table_cache_ = new TableCache(dbname_, &options_, table_cache_size);
 
   versions_ = new VersionSet(dbname_, &options_, table_cache_,
@@ -323,9 +321,9 @@ Status DBImpl::Recover(VersionEdit* edit) {
     std::vector<uint64_t> logs;
     for (size_t i = 0; i < filenames.size(); i++) {
       if (ParseFileName(filenames[i], &number, &type)) {
-    	expected.erase(number);
-    	if (type == kLogFile && ((number >= min_log) || (number == prev_log)))
-        logs.push_back(number);
+        expected.erase(number);
+        if (type == kLogFile && ((number >= min_log) || (number == prev_log)))
+          logs.push_back(number);
       }
     }
     if (!expected.empty()) {
@@ -1030,7 +1028,8 @@ static void CleanupIteratorState(void* arg1, void* arg2) {
 }  // namespace
 
 Iterator* DBImpl::NewInternalIterator(const ReadOptions& options,
-                                      SequenceNumber* latest_snapshot) {
+                                      SequenceNumber* latest_snapshot,
+                                      uint32_t* seed) {
   IterState* cleanup = new IterState;
   mutex_.Lock();
   *latest_snapshot = versions_->LastSequence();
@@ -1054,13 +1053,15 @@ Iterator* DBImpl::NewInternalIterator(const ReadOptions& options,
   cleanup->version = versions_->current();
   internal_iter->RegisterCleanup(CleanupIteratorState, cleanup, NULL);
 
+  *seed = ++seed_;
   mutex_.Unlock();
   return internal_iter;
 }
 
 Iterator* DBImpl::TEST_NewInternalIterator() {
   SequenceNumber ignored;
-  return NewInternalIterator(ReadOptions(), &ignored);
+  uint32_t ignored_seed;
+  return NewInternalIterator(ReadOptions(), &ignored, &ignored_seed);
 }
 
 int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
@@ -1117,12 +1118,21 @@ Status DBImpl::Get(const ReadOptions& options,
 
 Iterator* DBImpl::NewIterator(const ReadOptions& options) {
   SequenceNumber latest_snapshot;
-  Iterator* internal_iter = NewInternalIterator(options, &latest_snapshot);
+  uint32_t seed;
+  Iterator* iter = NewInternalIterator(options, &latest_snapshot, &seed);
   return NewDBIterator(
-      &dbname_, env_, user_comparator(), internal_iter,
+      this, user_comparator(), iter,
       (options.snapshot != NULL
        ? reinterpret_cast<const SnapshotImpl*>(options.snapshot)->number_
-       : latest_snapshot));
+       : latest_snapshot),
+      seed);
+}
+
+void DBImpl::RecordReadSample(Slice key) {
+  MutexLock l(&mutex_);
+  if (versions_->current()->RecordReadSample(key)) {
+    MaybeScheduleCompaction();
+  }
 }
 
 const Snapshot* DBImpl::GetSnapshot() {
@@ -1400,39 +1410,6 @@ void DBImpl::GetApproximateSizes(
     v->Unref();
   }
 }
-
-void DBImpl::SuspendCompactions() {
-  MutexLock l(& suspend_mutex);
-  env_->Schedule(&SuspendWork, this);
-  suspend_count++;
-  while( !suspended ) {
-    suspend_cv.Wait();
-  }  
-}
-void DBImpl::SuspendWork(void* db) {
-  reinterpret_cast<DBImpl*>(db)->SuspendCallback();
-}
-void DBImpl::SuspendCallback() {
-    MutexLock l(&suspend_mutex);
-    Log(options_.info_log, "Compactions suspended");
-    suspended = true;
-    suspend_cv.SignalAll();
-    while( suspend_count > 0 ) {
-        suspend_cv.Wait();
-    }
-    suspended = false;
-    suspend_cv.SignalAll();
-    Log(options_.info_log, "Compactions resumed");
-}
-void DBImpl::ResumeCompactions() {
-    MutexLock l(&suspend_mutex);
-    suspend_count--;
-    suspend_cv.SignalAll();
-    while( suspended ) {
-      suspend_cv.Wait();
-    }  
-}
-
 
 // Default implementations of convenience methods that subclasses of DB
 // can call if they wish

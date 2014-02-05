@@ -184,6 +184,7 @@ class SpecialEnv : public EnvWrapper {
     sleep_counter_.Increment();
     sleep_time_counter_.IncrementBy(micros);
   }
+
 };
 
 class DBTest {
@@ -1781,7 +1782,7 @@ TEST(DBTest, MultiThreaded) {
     mt.stop.Release_Store(&mt);
     for (int id = 0; id < kNumThreads; id++) {
       while (mt.thread_done[id].Acquire_Load() == NULL) {
-    	  DelayMilliseconds(100);
+        DelayMilliseconds(100);
       }
     }
   } while (ChangeOptions());
