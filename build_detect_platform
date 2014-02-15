@@ -75,6 +75,7 @@ case "$TARGET_OS" in
     Darwin)
         PLATFORM=OS_MACOSX
         COMMON_FLAGS="$MEMCMP_FLAG -DOS_MACOSX"
+        PLATFORM_CXXFLAGS=-I/usr/local/include
         PLATFORM_SHARED_EXT=dylib
         [ -z "$INSTALL_PATH" ] && INSTALL_PATH=`pwd`
         PLATFORM_SHARED_LDFLAGS="-dynamiclib -install_name $INSTALL_PATH/"
@@ -167,7 +168,12 @@ set -f # temporarily disable globbing so that our patterns aren't expanded
 PRUNE_TEST="-name *test*.cc -prune"
 PRUNE_BENCH="-name *_bench.cc -prune"
 PRUNE_TOOL="-name leveldb_main.cc -prune"
-PORTABLE_FILES=`find $DIRS $PRUNE_TEST -o $PRUNE_BENCH -o $PRUNE_TOOL -o -name '*.cc' -print | sort | sed "s,^$PREFIX/,," | tr "\n" " "`
+PRUNE_WIN=
+if [ "$PLATFORM" != "OS_WINDOWS" ]; then
+	PRUNE_WIN="-o -name *win*.cc -prune"
+	DIRS="$DIRS $PREFIX/env"
+fi
+PORTABLE_FILES=`find $DIRS $PRUNE_TEST -o $PRUNE_BENCH -o $PRUNE_TOOL $PRUNE_WIN -o -name '*.cc' -print | sort | sed "s,^$PREFIX/,," | tr "\n" " "`
 
 set +f # re-enable globbing
 
@@ -180,7 +186,7 @@ echo "MEMENV_SOURCES=helpers/memenv/memenv.cc" >> $OUTPUT
 CXXOUTPUT="${TMPDIR}/leveldb_build_detect_platform-cxx.$$"
 
 # Moved here to enable spanny support on MinGW as well
-if [ "$CROSS_COMPILE" = "false" ] || [ "$PLATFORM" = "OS_WINDOWS" ]; then
+if [ "$CROSS_COMPILE" != "true" ] || [ "$PLATFORM" = "OS_WINDOWS" ]; then
     # Test whether Snappy library is installed
     # http://code.google.com/p/snappy/
     $CXX $CXXFLAGS $PLATFORM_CXXFLAGS -x c++ -s - -o $CXXOUTPUT 2>/dev/null  <<EOF
