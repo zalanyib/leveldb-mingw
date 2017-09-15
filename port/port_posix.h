@@ -8,7 +8,7 @@
 #define STORAGE_LEVELDB_PORT_PORT_POSIX_H_
 
 #undef PLATFORM_IS_LITTLE_ENDIAN
-#if defined(OS_MACOSX)
+#if defined(__APPLE__)
   #include <machine/endian.h>
   #if defined(__DARWIN_LITTLE_ENDIAN) && defined(__DARWIN_BYTE_ORDER)
     #define PLATFORM_IS_LITTLE_ENDIAN \
@@ -21,14 +21,11 @@
   #else
     #define PLATFORM_IS_LITTLE_ENDIAN false
   #endif
-#elif defined(OS_FREEBSD)
+#elif defined(OS_FREEBSD) || defined(OS_OPENBSD) ||\
+      defined(OS_NETBSD) || defined(OS_DRAGONFLYBSD)
   #include <sys/types.h>
   #include <sys/endian.h>
   #define PLATFORM_IS_LITTLE_ENDIAN (_BYTE_ORDER == _LITTLE_ENDIAN)
-#elif defined(OS_OPENBSD) || defined(OS_NETBSD) ||\
-      defined(OS_DRAGONFLYBSD)
-  #include <sys/types.h>
-  #include <sys/endian.h>
 #elif defined(OS_HPUX)
   #define PLATFORM_IS_LITTLE_ENDIAN false
 #elif defined(OS_ANDROID)
@@ -38,7 +35,8 @@
   #include <endian.h>
   #define PLATFORM_IS_LITTLE_ENDIAN  (_BYTE_ORDER == _LITTLE_ENDIAN)
 #else
-  #include <endian.h>
+  //#include <endian.h>
+  #define PLATFORM_IS_LITTLE_ENDIAN 1
 #endif
 
 #include <pthread.h>
@@ -53,16 +51,16 @@
 #define PLATFORM_IS_LITTLE_ENDIAN (__BYTE_ORDER == __LITTLE_ENDIAN)
 #endif
 
-#if defined(OS_MACOSX) || defined(OS_SOLARIS) || defined(OS_FREEBSD) ||\
+#if defined(__APPLE__) || defined(OS_SOLARIS) || defined(OS_FREEBSD) ||\
     defined(OS_NETBSD) || defined(OS_OPENBSD) || defined(OS_DRAGONFLYBSD) ||\
-    defined(OS_ANDROID) || defined(OS_HPUX)
+    defined(OS_ANDROID) || defined(OS_HPUX) || defined(CYGWIN)
 // Use fread/fwrite/fflush on platforms without _unlocked variants
 #define fread_unlocked fread
 #define fwrite_unlocked fwrite
 #define fflush_unlocked fflush
 #endif
 
-#if defined(OS_MACOSX) || defined(OS_FREEBSD) ||\
+#if defined(__APPLE__) || defined(OS_FREEBSD) ||\
     defined(OS_OPENBSD) || defined(OS_DRAGONFLYBSD)
 // Use fsync() on platforms without fdatasync()
 #define fdatasync fsync
@@ -150,6 +148,8 @@ inline bool Snappy_Uncompress(const char* input, size_t length,
 inline bool GetHeapProfile(void (*func)(void*, const char*, int), void* arg) {
   return false;
 }
+
+uint32_t AcceleratedCRC32C(uint32_t crc, const char* buf, size_t size);
 
 } // namespace port
 } // namespace leveldb
