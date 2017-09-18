@@ -1,3 +1,5 @@
+install snappy from repository (pacman -S mingw-w64-x86_64-snappy)
+
 **LevelDB is a fast key-value storage library written at Google that provides an ordered mapping from string keys to string values.**
 
 [![Build Status](https://travis-ci.org/google/leveldb.svg?branch=master)](https://travis-ci.org/google/leveldb)
