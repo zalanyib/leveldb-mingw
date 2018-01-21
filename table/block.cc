@@ -27,12 +27,12 @@ Block::Block(const BlockContents& contents)
   if (size_ < sizeof(uint32_t)) {
     size_ = 0;  // Error marker
   } else {
-	size_t max_restarts_allowed = (size_-sizeof(uint32_t)) / sizeof(uint32_t);
-	if (NumRestarts() > max_restarts_allowed) {
-	  // The size is too small for NumRestarts()
+    size_t max_restarts_allowed = (size_-sizeof(uint32_t)) / sizeof(uint32_t);
+    if (NumRestarts() > max_restarts_allowed) {
+      // The size is too small for NumRestarts()
       size_ = 0;
-	} else {
-	  restart_offset_ = size_ - (1 + NumRestarts()) * sizeof(uint32_t);
+    } else {
+      restart_offset_ = size_ - (1 + NumRestarts()) * sizeof(uint32_t);
     }
   }
 }
@@ -46,7 +46,7 @@ Block::~Block() {
 // Helper routine: decode the next block entry starting at "p",
 // storing the number of shared key bytes, non_shared key bytes,
 // and the length of the value in "*shared", "*non_shared", and
-// "*value_length", respectively.  Will not derefence past "limit".
+// "*value_length", respectively.  Will not dereference past "limit".
 //
 // If any errors are detected, returns NULL.  Otherwise, returns a
 // pointer to the key delta (just past the three decoded values).
